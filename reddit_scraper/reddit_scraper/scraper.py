@@ -3,6 +3,7 @@ import json
 import csv
 import time
 import logging
+import re
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from datetime import datetime
@@ -37,6 +38,27 @@ class RedditScraper:
         except Exception as e:
             logger.error(f"Failed to create Reddit instance: {str(e)}")
             raise
+
+    def _sanitize_filename(self, title: str, post_id: str, max_length: int = 100) -> str:
+        """Convert title to a Linux-friendly filename"""
+        # Convert to lowercase and replace spaces with underscores
+        filename = title.lower().replace(' ', '_')
+        
+        # Remove special characters except underscores and hyphens
+        filename = re.sub(r'[^a-z0-9_-]', '', filename)
+        
+        # Replace multiple underscores with a single one
+        filename = re.sub(r'_+', '_', filename)
+        
+        # Truncate if too long, leaving room for post_id and extension
+        max_base_length = max_length - len(post_id) - 2  # -2 for the hyphen and potential truncation
+        if len(filename) > max_base_length:
+            filename = filename[:max_base_length].rstrip('_')
+        
+        # Add post_id for uniqueness
+        filename = f"{filename}-{post_id}"
+        
+        return filename
 
     def scrape_post(self, post_id: str) -> Optional[Dict[str, Any]]:
         """Scrape a Reddit post and its comments"""
@@ -88,10 +110,15 @@ class RedditScraper:
             logger.error(f"Error extracting comment: {str(e)}")
             return None
 
-    def save_to_markdown(self, data: Dict[str, Any], output_path: Path) -> None:
+    def save_to_markdown(self, data: Dict[str, Any], output_path: Path) -> Path:
         """Save post data to Markdown format"""
         try:
-            md = MdUtils(file_name=str(output_path))
+            # Create filename from post title
+            filename = self._sanitize_filename(data["title"], output_path.name.split('_')[-1])
+            output_path = output_path.parent / f"{filename}.md"
+            
+            # Create markdown content
+            md = MdUtils(file_name=str(output_path.with_suffix('')))  # Remove .md as MdUtils adds it
             
             # Post Header
             md.new_header(level=1, title=data["title"])
@@ -118,7 +145,8 @@ class RedditScraper:
                     self._add_comment_to_markdown(md, comment)
             
             md.create_md_file()
-            logger.info(f"Saved Markdown file to: {output_path}.md")
+            logger.info(f"Saved Markdown file to: {output_path}")
+            return output_path
             
         except Exception as e:
             logger.error(f"Error saving to markdown: {str(e)}")
@@ -145,22 +173,30 @@ class RedditScraper:
         except Exception as e:
             logger.error(f"Error adding comment to markdown: {str(e)}")
 
-    def save_to_json(self, data: Dict[str, Any], output_path: Path) -> None:
+    def save_to_json(self, data: Dict[str, Any], output_path: Path) -> Path:
         """Save post data to JSON format"""
         try:
-            with open(f"{output_path}.json", 'w', encoding='utf-8') as f:
+            # Create filename from post title
+            filename = self._sanitize_filename(data["title"], output_path.name.split('_')[-1])
+            output_path = output_path.parent / f"{filename}.json"
+            
+            with open(output_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
-            logger.info(f"Saved JSON file to: {output_path}.json")
+            logger.info(f"Saved JSON file to: {output_path}")
+            return output_path
         except Exception as e:
             logger.error(f"Error saving to JSON: {str(e)}")
             raise
 
-    def save_to_csv(self, data: Dict[str, Any], output_path: Path) -> None:
+    def save_to_csv(self, data: Dict[str, Any], output_path: Path) -> Path:
         """Save post data to CSV format (flattened structure)"""
         try:
-            comments = self._flatten_comments(data["comments"])
+            # Create filename from post title
+            filename = self._sanitize_filename(data["title"], output_path.name.split('_')[-1])
+            output_path = output_path.parent / f"{filename}.csv"
             
-            with open(f"{output_path}.csv", 'w', newline='', encoding='utf-8') as f:
+            comments = self._flatten_comments(data["comments"])
+            with open(output_path, 'w', newline='', encoding='utf-8') as f:
                 writer = csv.DictWriter(f, fieldnames=[
                     "comment_id", "parent_id", "author", "body", "score",
                     "created_utc", "edited", "is_submitter", "depth"
@@ -168,7 +204,8 @@ class RedditScraper:
                 writer.writeheader()
                 writer.writerows(comments)
                 
-            logger.info(f"Saved CSV file to: {output_path}.csv")
+            logger.info(f"Saved CSV file to: {output_path}")
+            return output_path
         except Exception as e:
             logger.error(f"Error saving to CSV: {str(e)}")
             raise

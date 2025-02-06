@@ -76,17 +76,18 @@ def scrape(url: str, output: Optional[str], format: str):
             
             if result:
                 # Save to file
-                output_file = output_dir / f"reddit_post_{url}"
+                base_path = output_dir / f"reddit_post_{url}"
                 progress.add_task(f"Saving to {format} format...", total=None)
                 
+                # Save file and get actual output path
                 if format == 'markdown':
-                    scraper.save_to_markdown(result, output_file)
+                    actual_path = scraper.save_to_markdown(result, base_path)
                 elif format == 'json':
-                    scraper.save_to_json(result, output_file)
+                    actual_path = scraper.save_to_json(result, base_path)
                 else:  # csv
-                    scraper.save_to_csv(result, output_file)
+                    actual_path = scraper.save_to_csv(result, base_path)
                 
-                console.print(f"\n[green]Successfully saved to: {output_file}.{format}[/green]")
+                console.print(f"\n[green]Successfully saved to: {actual_path}[/green]")
             else:
                 console.print("\n[red]Failed to scrape post[/red]")
                 
